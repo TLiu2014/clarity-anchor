@@ -1,0 +1,12 @@
+{
+  "id": "rumination",
+  "emoji": "💭",
+  "title": "Rumination spiral",
+  "prompt": "I keep replaying a conversation from this morning, convinced I said something wrong and that everyone now secretly thinks I'm a bad person.",
+  "baselineRules": [
+    "A thought is not a fact — replaying it changes nothing.",
+    "One awkward moment does not define what people think of me.",
+    "I cannot read minds; assuming the worst is a guess, not evidence.",
+    "Mentally reviewing the past is a loop, not problem-solving."
+  ]
+}

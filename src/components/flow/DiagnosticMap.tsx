@@ -12,7 +12,6 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { useGraphStore } from "@/store/useGraphStore";
-import { ResultPanel } from "@/components/ResultPanel";
 import { STATE_STYLES } from "./stateStyles";
 import { ThoughtNode } from "./ThoughtNode";
 
@@ -27,7 +26,10 @@ function DiagnosticMapInner() {
   const onConnect = useGraphStore((s) => s.onConnect);
   const openDetails = useGraphStore((s) => s.openDetails);
   const status = useGraphStore((s) => s.status);
+  const erpAwaiting = useGraphStore((s) => s.erpAwaiting);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
+  const centerSplit = useGraphStore((s) => s.centerSplit);
+  const relayout = useGraphStore((s) => s.relayout);
   const rf = useReactFlow();
 
   // Re-fit the viewport as nodes stream in so new nodes are always visible and
@@ -41,6 +43,17 @@ function DiagnosticMapInner() {
     );
     return () => clearTimeout(t);
   }, [nodeCount, rf]);
+
+  // Re-flow the graph for the current direction (side-by-side → top-down,
+  // stacked → left-right) on mount and whenever the arrangement changes.
+  useEffect(() => {
+    relayout();
+    const t = setTimeout(
+      () => rf.fitView({ padding: 0.25, duration: 300, maxZoom: 1.3 }),
+      80
+    );
+    return () => clearTimeout(t);
+  }, [centerSplit, relayout, rf]);
 
   const decorated = useMemo(
     () =>
@@ -108,12 +121,15 @@ function DiagnosticMapInner() {
       )}
 
       {status === "running" && (
-        <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-blue-600/90 px-3 py-1 text-xs font-medium text-white shadow">
-          Agent is reasoning…
+        <div
+          className={[
+            "pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-medium text-white shadow",
+            erpAwaiting ? "bg-amber-500/90" : "bg-blue-600/90",
+          ].join(" ")}
+        >
+          {erpAwaiting ? "Paused — awaiting you" : "Agent is reasoning…"}
         </div>
       )}
-
-      <ResultPanel />
     </div>
   );
 }

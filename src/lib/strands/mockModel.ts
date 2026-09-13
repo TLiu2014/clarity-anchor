@@ -83,16 +83,30 @@ export class MockModel extends Model<BaseModelConfig> {
         );
         break;
       case 2:
-        yield* this.toolUseTurn(
-          "requestErpDelay",
-          { trigger, urgeIntensity: 7 },
-          "mock-tool-erp"
-        );
+        // Only recommend an ERP delay for a physical compulsion / gray-area
+        // urge. Pure rumination gets grounded without the pause — so different
+        // urges produce visibly different flows.
+        if (this.needsErpDelay(trigger)) {
+          yield* this.toolUseTurn(
+            "requestErpDelay",
+            { trigger, urgeIntensity: 7 },
+            "mock-tool-erp"
+          );
+        } else {
+          yield* this.finalTurn();
+        }
         break;
       default:
         yield* this.finalTurn();
         break;
     }
+  }
+
+  /** Heuristic: does this urge involve a physical compulsion worth delaying? */
+  private needsErpDelay(trigger: string): boolean {
+    return /\b(check|again|re-?check|wash|clean|lock|stove|oven|door|unplug|count|repeat|touch|scrub|hands|redo|verify|make sure)\w*/i.test(
+      trigger
+    );
   }
 
   private async *toolUseTurn(
@@ -115,7 +129,7 @@ export class MockModel extends Model<BaseModelConfig> {
 
   private async *finalTurn(): AsyncGenerator<ModelStreamEvent> {
     const text =
-      "Here's the reality: against your own Calm Ground Rules, nothing objective has changed — " +
+      "Here's the reality: against your own anchors, nothing objective has changed — " +
       "this is a known OCD loop, not new evidence. The urge is a feeling, not a fact. " +
       "Acknowledge the thought, start a 5-minute ERP delay, and let the anxiety crest and fall " +
       "without acting on the compulsion. You've already done enough.";

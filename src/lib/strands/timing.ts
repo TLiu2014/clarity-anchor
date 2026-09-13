@@ -6,7 +6,7 @@
  * (green). Set DEMO_LATENCY_MS=0 for real Bedrock runs where latency is real.
  */
 export const DEMO_DELAY_MS = Number.parseInt(
-  process.env.DEMO_LATENCY_MS ?? "650",
+  process.env.DEMO_LATENCY_MS ?? "900",
   10
 );
 

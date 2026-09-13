@@ -1,10 +1,95 @@
-import { Agent, BedrockModel, tool, type Model } from "@strands-agents/sdk";
+import {
+  Agent,
+  BedrockModel,
+  tool,
+  type Message,
+  type MessageData,
+  type Model,
+} from "@strands-agents/sdk";
 import { z } from "zod";
 import { MockModel } from "./mockModel";
 import { demoDelay } from "./timing";
 import { DEFAULT_BASELINE_RULES } from "./defaults";
 
 export { DEFAULT_BASELINE_RULES };
+
+/** Bring-your-own-key Bedrock credentials sent from the client. */
+export interface BedrockCreds {
+  region?: string;
+  apiKey?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  sessionToken?: string;
+}
+
+/** Does the credential set actually let us call Bedrock? */
+export function hasBedrockCreds(creds?: BedrockCreds | null): boolean {
+  if (!creds) return false;
+  return Boolean(
+    creds.apiKey?.trim() ||
+      (creds.accessKeyId?.trim() && creds.secretAccessKey?.trim())
+  );
+}
+
+/** Build a BedrockModel from BYOK credentials (or env/instance-role creds). */
+export function buildBedrockModel(creds: BedrockCreds = {}): BedrockModel {
+  const region = creds.region?.trim() || process.env.AWS_REGION || "us-west-2";
+  const modelId =
+    process.env.BEDROCK_MODEL_ID ?? "global.anthropic.claude-sonnet-4-6";
+
+  if (creds.apiKey?.trim()) {
+    return new BedrockModel({ modelId, region, apiKey: creds.apiKey.trim() });
+  }
+  if (creds.accessKeyId?.trim() && creds.secretAccessKey?.trim()) {
+    return new BedrockModel({
+      modelId,
+      region,
+      clientConfig: {
+        region,
+        credentials: {
+          accessKeyId: creds.accessKeyId.trim(),
+          secretAccessKey: creds.secretAccessKey.trim(),
+          ...(creds.sessionToken?.trim()
+            ? { sessionToken: creds.sessionToken.trim() }
+            : {}),
+        },
+      },
+    });
+  }
+  // Fall back to the ambient AWS credential chain (profile / SSO / role).
+  return new BedrockModel({ modelId, region });
+}
+
+/** The credential-free heuristic (mock) model. */
+export function createMockModel(): Model {
+  return new MockModel();
+}
+
+/**
+ * Whether the server env is set up to drive Bedrock (no BYOK needed):
+ *  - MODEL_PROVIDER=bedrock            → yes (explicit)
+ *  - MODEL_PROVIDER=mock               → no  (explicit opt-out)
+ *  - otherwise auto-detect AWS creds   → yes if IAM keys or a Bedrock API key
+ *    are present in the environment.
+ */
+export function envBedrockConfigured(): boolean {
+  const p = process.env.MODEL_PROVIDER?.toLowerCase();
+  if (p === "mock") return false;
+  if (p === "bedrock") return true;
+  return Boolean(
+    (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ||
+      process.env.AWS_BEARER_TOKEN_BEDROCK
+  );
+}
+
+/**
+ * Default model when none is passed in: Amazon Bedrock when the env is set up
+ * for it (AWS creds present, or MODEL_PROVIDER=bedrock), otherwise the built-in
+ * credential-free heuristic model so the app still runs for a demo.
+ */
+function resolveModel(): Model {
+  return envBedrockConfigured() ? buildBedrockModel() : createMockModel();
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Distortion analysis                                                        */
@@ -31,6 +116,13 @@ const DISTORTIONS: {
       "Demanding 100% certainty and re-checking, when a single confirmation is already complete evidence.",
   },
   {
+    key: "mindreading",
+    name: "Mind-reading & Rumination",
+    match: /\b(everyone|nobody|they think|thinks|replay|reviewing|conversation|said|judg|hate|embarrass|secretly|bad person)\w*/i,
+    explanation:
+      "Assuming you know what others think and mentally replaying events — treating guesses about the past as facts.",
+  },
+  {
     key: "catastrophizing",
     name: "Catastrophizing",
     match: /\b(what if|disaster|terrible|die|death|worst|catastroph|ruin|never)\w*/i,
@@ -51,6 +143,10 @@ export interface RealityAnchorOptions {
    * The tool awaits this promise; the loop resumes only when it resolves.
    */
   onErpDelay?: (input: { trigger: string; urgeIntensity?: number }) => Promise<unknown>;
+  /** The model to drive. Defaults to the env-selected provider. */
+  model?: Model;
+  /** Prior conversation history to seed (for continuing a chat). */
+  messages?: Message[] | MessageData[];
 }
 
 function buildTools(options: RealityAnchorOptions) {
@@ -62,7 +158,7 @@ function buildTools(options: RealityAnchorOptions) {
   const fetchBaselineRules = tool({
     name: "fetchBaselineRules",
     description:
-      "Fetch the user's pre-agreed objective 'Calm Ground Rules'. Call this FIRST to ground any urge in the user's own baseline before judging it.",
+      "Fetch the user's pre-agreed objective 'anchors' (calm baseline facts). Call this FIRST to ground any urge in the user's own anchors before judging it.",
     inputSchema: z.object({}),
     callback: async () => {
       await demoDelay();
@@ -70,8 +166,8 @@ function buildTools(options: RealityAnchorOptions) {
         rules,
         source:
           options.baselineRules && options.baselineRules.length > 0
-            ? "User's saved Calm Ground Rules."
-            : "Default Calm Ground Rules (user hasn't set their own yet).",
+            ? "Your saved anchors."
+            : "Default anchors (you haven't set your own yet).",
       };
     },
   });
@@ -138,8 +234,8 @@ function buildTools(options: RealityAnchorOptions) {
 const SYSTEM_PROMPT = `You are ClarityAnchor, an objective "Reality Anchor" for a person experiencing OCD urges or anxious cognitive loops. Your job is to ground them in reality, never to reassure compulsively.
 
 Follow this process for every reported trigger or urge:
-1. Call fetchBaselineRules FIRST to load the user's agreed objective "Calm Ground Rules".
-2. Compare the user's prompt to those rules. If it already violates a rule, say so plainly.
+1. Call fetchBaselineRules FIRST to load the user's agreed objective "anchors" (calm baseline facts).
+2. Compare the user's prompt to those anchors. If it already violates one, say so plainly.
 3. If the urge seems driven by a thinking trap rather than evidence, call analyzeDistortion to name the distortion.
 4. If the urge is compulsive or a gray area, call requestErpDelay and relay the delay. This pauses for the user to sit with the urge.
 5. Give a calm, brief, warm final answer: name the objective reality, and recommend acknowledging the thought WITHOUT performing the compulsion.
@@ -152,18 +248,16 @@ Never encourage the compulsion. Be concise and non-judgmental.`;
  * credential-free MockModel that scripts the same tool flow.
  */
 export function createRealityAnchorAgent(options: RealityAnchorOptions = {}) {
-  const useBedrock = process.env.USE_BEDROCK === "true";
-  const model: Model = useBedrock
-    ? new BedrockModel({
-        modelId:
-          process.env.BEDROCK_MODEL_ID ?? "global.anthropic.claude-sonnet-4-6",
-        region: process.env.AWS_REGION ?? "us-east-1",
-      })
-    : new MockModel();
-
   return new Agent({
-    model,
+    model: options.model ?? resolveModel(),
     systemPrompt: SYSTEM_PROMPT,
     tools: buildTools(options),
+    // Run tools one at a time so the frontend reveals each step as a guided
+    // walkthrough (rules → thinking trap → pause), even when the model requests
+    // several tools in one turn.
+    toolExecutor: "sequential",
+    ...(options.messages && options.messages.length > 0
+      ? { messages: options.messages }
+      : {}),
   });
 }

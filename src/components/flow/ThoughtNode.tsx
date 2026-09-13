@@ -10,6 +10,8 @@ type ThoughtNodeType = Node<ThoughtNodeData, "thought">;
 
 function ThoughtNodeImpl({ id, data, selected }: NodeProps<ThoughtNodeType>) {
   const openDetails = useGraphStore((s) => s.openDetails);
+  // Side-by-side panels → vertical (top-down) flow, so handles go top/bottom.
+  const vertical = useGraphStore((s) => s.centerSplit === "horizontal");
   const style = STATE_STYLES[data.state];
 
   const handleCls =
@@ -18,13 +20,17 @@ function ThoughtNodeImpl({ id, data, selected }: NodeProps<ThoughtNodeType>) {
   return (
     <div
       className={[
-        "relative w-[240px] rounded-xl border-2 bg-white p-3 shadow-sm transition-shadow dark:bg-slate-900",
+        "relative w-[260px] rounded-xl border-2 bg-white p-3 shadow-sm transition-shadow dark:bg-slate-900",
         selected ? "ring-2 ring-indigo-400 ring-offset-2 ring-offset-transparent" : "hover:shadow-md",
         style.ring,
       ].join(" ")}
       style={{ borderColor: style.color }}
     >
-      <Handle type="target" position={Position.Left} className={handleCls} />
+      <Handle
+        type="target"
+        position={vertical ? Position.Top : Position.Left}
+        className={handleCls}
+      />
 
       <div className="flex items-start gap-2.5">
         <span
@@ -58,7 +64,7 @@ function ThoughtNodeImpl({ id, data, selected }: NodeProps<ThoughtNodeType>) {
             </span>
           </div>
 
-          <div className="mt-1.5 truncate font-mono text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <div className="mt-1.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
             {data.label}
           </div>
 
@@ -88,7 +94,11 @@ function ThoughtNodeImpl({ id, data, selected }: NodeProps<ThoughtNodeType>) {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Right} className={handleCls} />
+      <Handle
+        type="source"
+        position={vertical ? Position.Bottom : Position.Right}
+        className={handleCls}
+      />
     </div>
   );
 }

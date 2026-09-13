@@ -1,0 +1,12 @@
+{
+  "id": "contamination",
+  "emoji": "🧼",
+  "title": "Contamination fear",
+  "prompt": "I touched a public door handle and now I feel like I have to wash my hands again or I'll get sick.",
+  "baselineRules": [
+    "Only wash hands before eating or after using the bathroom.",
+    "Ordinary daily contact is not a medical emergency.",
+    "A single wash is complete; repeating adds no real safety.",
+    "Anxiety is a feeling, not proof of contamination."
+  ]
+}

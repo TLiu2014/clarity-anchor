@@ -1,11 +1,19 @@
-import { createRealityAnchorAgent } from "@/lib/strands/agent";
+import {
+  buildBedrockModel,
+  createMockModel,
+  createRealityAnchorAgent,
+  envBedrockConfigured,
+  hasBedrockCreds,
+  type BedrockCreds,
+} from "@/lib/strands/agent";
 import { waitForErpCommit } from "@/lib/strands/erpRegistry";
+import { getHistory, saveHistory } from "@/lib/strands/conversationStore";
+import type { Model } from "@strands-agents/sdk";
 
 // The Strands SDK is Node-only (pulls in AWS SDK, etc.). Force the Node runtime.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Reduce a toolResult content array to a plain JS value (json block or joined text). */
 function reduceToolResult(content: unknown): unknown {
   if (!Array.isArray(content)) return content;
   for (const c of content) {
@@ -20,15 +28,16 @@ function reduceToolResult(content: unknown): unknown {
 }
 
 /**
- * Streams the ClarityAnchor Strands agent's chain-of-thought as Server-Sent
- * Events. It iterates the agent's lifecycle stream and forwards a JSON chunk on
- * each meaningful event so the frontend can draw the Diagnostic Map live:
+ * Streams the ClarityAnchor Strands agent's chain-of-thought as SSE.
  *
- *   { type: "start",         prompt }
- *   { type: "tool_start",    name, toolUseId, input }
- *   { type: "tool_complete", name, toolUseId, output }
- *   { type: "done",          response, stopReason }
- *   { type: "error",         error }
+ * Model selection:
+ *  - BYOK Bedrock credentials in the request  → real LLM (Amazon Bedrock)
+ *  - else MODEL_PROVIDER=bedrock in the env    → real LLM (ambient AWS creds)
+ *  - else fallbackMode="heuristic"             → credential-free mock model
+ *  - else fallbackMode="alert"                 → emit a not_connected error
+ *
+ * Conversation continuity: prior messages for `conversationId` seed the agent
+ * (real models only), and the updated history is saved back after the run.
  */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
@@ -38,27 +47,59 @@ export async function POST(req: Request) {
       : "I feel like I have to check the front door lock again.";
   const runId: string =
     typeof body?.runId === "string" && body.runId ? body.runId : "default-run";
+  const conversationId: string | undefined =
+    typeof body?.conversationId === "string" ? body.conversationId : undefined;
   const baselineRules: string[] = Array.isArray(body?.baselineRules)
     ? body.baselineRules.filter(
         (r: unknown): r is string => typeof r === "string" && r.trim().length > 0
       )
     : [];
+  const fallbackMode: "heuristic" | "alert" =
+    body?.fallbackMode === "alert" ? "alert" : "heuristic";
+  const bedrock: BedrockCreds | null =
+    body?.bedrock && typeof body.bedrock === "object" ? body.bedrock : null;
+
+  // Decide the model.
+  let model: Model | null = null;
+  let usingRealModel = false;
+  if (hasBedrockCreds(bedrock)) {
+    model = buildBedrockModel(bedrock!);
+    usingRealModel = true;
+  } else if (envBedrockConfigured()) {
+    model = buildBedrockModel();
+    usingRealModel = true;
+  }
 
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (obj: unknown) => {
+      const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
-      };
 
       try {
         send({ type: "start", prompt, runId });
 
+        // No real model available → alert or heuristic fallback.
+        if (!model) {
+          if (fallbackMode === "alert") {
+            send({
+              type: "error",
+              code: "not_connected",
+              error:
+                "Agent not connected. Add your Bedrock API key in Settings, or switch the fallback to Heuristic mode.",
+            });
+            return;
+          }
+          model = createMockModel();
+        }
+
         const agent = createRealityAnchorAgent({
           baselineRules,
+          model,
+          // Only real models benefit from (and correctly handle) prior history.
+          messages: usingRealModel ? getHistory(conversationId) : [],
           onErpDelay: async (input) => {
-            // Tell the client we're paused, then block the loop until commit.
             send({ type: "erp_await", runId, input });
             const outcome = await waitForErpCommit(runId);
             send({ type: "erp_resume", runId, outcome });
@@ -67,7 +108,6 @@ export async function POST(req: Request) {
         });
 
         for await (const streamEvent of agent.stream(prompt)) {
-          // The stream is typed as the StreamEvent base class; narrow loosely.
           const event = streamEvent as unknown as {
             type: string;
             toolUse?: { name?: string; toolUseId?: string; input?: unknown };
@@ -79,37 +119,37 @@ export async function POST(req: Request) {
           };
 
           switch (event.type) {
-            case "beforeToolCallEvent": {
-              const tu = event.toolUse;
+            case "beforeToolCallEvent":
               send({
                 type: "tool_start",
-                name: tu?.name,
-                toolUseId: tu?.toolUseId,
-                input: tu?.input,
+                name: event.toolUse?.name,
+                toolUseId: event.toolUse?.toolUseId,
+                input: event.toolUse?.input,
               });
               break;
-            }
-            case "afterToolCallEvent": {
-              const tu = event.toolUse;
+            case "afterToolCallEvent":
               send({
                 type: "tool_complete",
-                name: tu?.name,
-                toolUseId: tu?.toolUseId,
+                name: event.toolUse?.name,
+                toolUseId: event.toolUse?.toolUseId,
                 output: reduceToolResult(event.result?.content),
               });
               break;
-            }
-            case "agentResultEvent": {
+            case "agentResultEvent":
               send({
                 type: "done",
                 response: event.result?.toString?.() ?? "",
                 stopReason: event.result?.stopReason,
               });
               break;
-            }
             default:
               break;
           }
+        }
+
+        // Persist updated history so the next turn continues the conversation.
+        if (usingRealModel) {
+          saveHistory(conversationId, agent.messages);
         }
       } catch (err) {
         console.error("[/api/agent] stream error", err);
@@ -128,7 +168,6 @@ export async function POST(req: Request) {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      // Disable proxy buffering (e.g. nginx) so chunks flush immediately.
       "X-Accel-Buffering": "no",
     },
   });
@@ -138,8 +177,8 @@ export async function GET() {
   return Response.json({
     status: "ok",
     agent: "ClarityAnchor Reality Anchor (SSE)",
-    model: process.env.USE_BEDROCK === "true" ? "bedrock" : "mock",
+    defaultModel: envBedrockConfigured() ? "bedrock" : "mock",
     tools: ["fetchBaselineRules", "analyzeDistortion", "requestErpDelay"],
-    hint: "POST { prompt } to stream the agent's chain-of-thought as SSE.",
+    hint: "POST { prompt, conversationId, bedrock?, fallbackMode? } to stream.",
   });
 }

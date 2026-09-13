@@ -1,0 +1,12 @@
+{
+  "id": "checking",
+  "emoji": "🔒",
+  "title": "Checking / doubt",
+  "prompt": "I already locked the front door and checked the stove, but what if I didn't and the house burns down? I need to go check again.",
+  "baselineRules": [
+    "Checking the lock or stove once, and confirming it, is sufficient.",
+    "A single verification is complete evidence; repeating adds no new information.",
+    "Doubt is a feeling, not a reason to re-check.",
+    "If I checked once, it is done."
+  ]
+}

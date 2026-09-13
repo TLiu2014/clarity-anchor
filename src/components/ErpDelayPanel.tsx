@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useGraphStore } from "@/store/useGraphStore";
-
-const DELAY_SECONDS = 180; // 3-minute ERP delay
+import { useEffect, useState } from "react";
+import {
+  useGraphStore,
+  ERP_DELAY_SECONDS as DELAY_SECONDS,
+} from "@/store/useGraphStore";
 
 function fmt(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -12,40 +13,34 @@ function fmt(sec: number): string {
 }
 
 /**
- * Human-in-the-loop ERP panel shown in the drawer for the requestErpDelay node.
- * While the agent is paused it runs a 3-minute countdown and offers a
- * "Commit to Delay" button; committing (or the timer finishing) resumes the
- * Strands agent loop.
+ * Human-in-the-loop ERP panel for the requestErpDelay node. The countdown is
+ * anchored to an absolute deadline in the store, so it keeps running even if the
+ * user navigates away and comes back (this component remounts). Committing (or
+ * the timer reaching zero) resumes the Strands agent loop.
  */
 export function ErpDelayPanel() {
   const erpAwaiting = useGraphStore((s) => s.erpAwaiting);
+  const erpDeadline = useGraphStore((s) => s.erpDeadline);
   const commitErpDelay = useGraphStore((s) => s.commitErpDelay);
 
-  const [remaining, setRemaining] = useState(DELAY_SECONDS);
-  const committedRef = useRef(false);
-
-  // Start / reset the countdown whenever a new ERP pause begins.
+  // Tick to re-render; the real time source is the store deadline.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!erpAwaiting) return;
-    committedRef.current = false;
-    setRemaining(DELAY_SECONDS);
-
-    const id = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(id);
-          if (!committedRef.current) {
-            committedRef.current = true;
-            commitErpDelay(); // auto-commit when the delay completes
-          }
-          return 0;
-        }
-        return r - 1;
-      });
-    }, 1000);
-
+    const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
-  }, [erpAwaiting, commitErpDelay]);
+  }, [erpAwaiting]);
+
+  const remaining = erpDeadline
+    ? Math.max(0, Math.ceil((erpDeadline - now) / 1000))
+    : DELAY_SECONDS;
+
+  // Auto-commit once the deadline passes.
+  useEffect(() => {
+    if (erpAwaiting && erpDeadline && now >= erpDeadline) {
+      commitErpDelay();
+    }
+  }, [erpAwaiting, erpDeadline, now, commitErpDelay]);
 
   const pct = (remaining / DELAY_SECONDS) * 100;
 
@@ -79,10 +74,7 @@ export function ErpDelayPanel() {
 
         <button
           type="button"
-          onClick={() => {
-            committedRef.current = true;
-            commitErpDelay();
-          }}
+          onClick={() => commitErpDelay()}
           className="mt-4 w-full rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600"
         >
           Commit to Delay
