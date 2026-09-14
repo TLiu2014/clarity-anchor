@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useGraphStore } from "@/store/useGraphStore";
 import { STATE_STYLES } from "@/components/flow/stateStyles";
 import { SAMPLES, type Sample } from "@/samples";
+import { stripMarkdown } from "@/lib/text";
 
 function EmptyState({ onPick }: { onPick: (s: Sample) => void }) {
   return (
@@ -174,7 +175,7 @@ export function ChatPanel() {
                     Reality Anchor
                   </div>
                   <div className="whitespace-pre-wrap break-words leading-relaxed">
-                    {m.content}
+                    {stripMarkdown(m.content)}
                   </div>
                 </div>
               )

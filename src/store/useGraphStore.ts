@@ -565,10 +565,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           });
           connectNodes(lastNodeId, id);
           lastNodeId = id;
-          // Auto-follow: move the detail view to each step as it happens so the
-          // run reads as a guided walkthrough (rules → thinking trap → pause)
-          // instead of jumping straight to the ERP countdown.
-          set({ selectedNodeId: id });
           break;
         }
         case "tool_complete": {
@@ -604,6 +600,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             payload: output,
             distortion,
           });
+          // Scroll the detail view to this section now that it's done.
+          set({ selectedNodeId: id });
           break;
         }
         case "erp_await": {

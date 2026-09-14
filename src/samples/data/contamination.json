@@ -2,11 +2,11 @@
   "id": "contamination",
   "emoji": "🧼",
   "title": "Contamination fear",
-  "prompt": "I touched a public door handle and now I feel like I have to wash my hands again or I'll get sick.",
+  "prompt": "I touched a door handle and my hands feel contaminated and I want to scrub them — but they look completely clean and I haven't touched anything actually dirty.",
   "baselineRules": [
-    "Only wash hands before eating or after using the bathroom.",
-    "Ordinary daily contact is not a medical emergency.",
-    "A single wash is complete; repeating adds no real safety.",
+    "Wash when hands are actually dirty — visible grime, soap, food, or chemicals — not just when they feel dirty.",
+    "A feeling of contamination is not the same as real dirt.",
+    "One proper wash is complete; repeating adds no real safety.",
     "Anxiety is a feeling, not proof of contamination."
   ]
 }

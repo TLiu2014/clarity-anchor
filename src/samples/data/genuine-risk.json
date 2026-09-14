@@ -1,0 +1,12 @@
+{
+  "id": "genuine-risk",
+  "emoji": "⚠️",
+  "title": "A real safety signal",
+  "prompt": "I can smell gas in the kitchen and I think the stove might actually be on — this feels different from my usual checking worry.",
+  "baselineRules": [
+    "Checking the lock or stove once, and confirming it, is sufficient.",
+    "A repeated doubt with no new evidence is the OCD loop.",
+    "New, real sensory evidence — smelling gas, seeing smoke, an actual injury — is NOT the loop. Act on it.",
+    "Anxiety is a feeling, not proof of danger — but real evidence is."
+  ]
+}

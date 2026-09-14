@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useGraphStore, type ThoughtNode } from "@/store/useGraphStore";
 import { STATE_STYLES } from "@/components/flow/stateStyles";
 import { ErpDelayPanel } from "@/components/ErpDelayPanel";
+import { stripMarkdown } from "@/lib/text";
 
 /* ---------------------------------------------------------------- helpers -- */
 
@@ -121,7 +122,7 @@ function RootBody({ node }: { node: ThoughtNode }) {
       {answer ? (
         <>
           <Callout tone="reality" title="Grounded in reality">
-            {answer}
+            {stripMarkdown(answer)}
           </Callout>
           {matchedRule && (
             <Callout tone="rule" title="Checked against your anchor">
@@ -291,39 +292,68 @@ export function NodeDetailsView() {
   const nodes = useGraphStore((s) => s.nodes);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
 
-  // Scroll the selected node's card into view when selection changes.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Trailing spacer = one panel-height of room after the last card, so the
+  // newest card can always scroll to the TOP even before the panel is full.
+  const [spacer, setSpacer] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setSpacer(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Bring the selected node's card to the TOP of the panel when selection
+  // changes — animated, so the user sees earlier steps slide up out of view
+  // (and knows to scroll up for them). A late instant pass corrects the final
+  // position in case a card grew mid-animation (e.g. the ERP countdown panel).
   useEffect(() => {
     if (!selectedNodeId) return;
-    const el = document.getElementById(`node-detail-${selectedNodeId}`);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [selectedNodeId, nodes.length]);
-
-  if (nodes.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-500 dark:bg-indigo-950 dark:text-indigo-300">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-            <circle cx="12" cy="5" r="2.5" />
-            <path d="M12 7.5V21M5 13a7 7 0 0 0 14 0M4 13h2M18 13h2" />
-          </svg>
-        </div>
-        <p className="max-w-xs text-sm text-slate-500 dark:text-slate-400">
-          Describe an urge on the left to begin. Each step of the agent&apos;s
-          reasoning will appear here as a card you can scroll through.
-        </p>
-      </div>
+    const el = () => document.getElementById(`node-detail-${selectedNodeId}`);
+    const raf = requestAnimationFrame(() =>
+      el()?.scrollIntoView({ behavior: "smooth", block: "start" })
     );
-  }
+    const t = setTimeout(
+      () => el()?.scrollIntoView({ behavior: "auto", block: "start" }),
+      600
+    );
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [selectedNodeId, nodes.length, spacer]);
 
   return (
-    <div className="h-full overflow-y-auto">
-      {nodes.map((node) => (
-        <NodeCard
-          key={node.id}
-          node={node}
-          active={node.id === selectedNodeId}
-        />
-      ))}
+    <div ref={scrollRef} className="h-full overflow-y-auto">
+      {nodes.length === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-500 dark:bg-indigo-950 dark:text-indigo-300">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+              <circle cx="12" cy="5" r="2.5" />
+              <path d="M12 7.5V21M5 13a7 7 0 0 0 14 0M4 13h2M18 13h2" />
+            </svg>
+          </div>
+          <p className="max-w-xs text-sm text-slate-500 dark:text-slate-400">
+            Describe an urge on the left to begin. Each step of the agent&apos;s
+            reasoning will appear here as a card you can scroll through.
+          </p>
+        </div>
+      ) : (
+        <>
+          {nodes.map((node) => (
+            <NodeCard
+              key={node.id}
+              node={node}
+              active={node.id === selectedNodeId}
+            />
+          ))}
+          {/* room so the last card can reach the top of the panel */}
+          <div aria-hidden style={{ height: spacer }} />
+        </>
+      )}
     </div>
   );
 }

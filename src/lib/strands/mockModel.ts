@@ -71,6 +71,20 @@ export class MockModel extends Model<BaseModelConfig> {
     // at a time rather than all at once.
     await demoDelay();
 
+    const kind = this.classify(trigger);
+
+    // Genuine new-evidence / safety signal → ground, then validate + advise
+    // action. No distortion, no ERP: a short flow (2 nodes) that shows the
+    // agent won't pathologize a real risk.
+    if (kind === "genuine") {
+      if (step === 0) {
+        yield* this.toolUseTurn("fetchBaselineRules", {}, "mock-tool-rules");
+      } else {
+        yield* this.finalTurn("genuine");
+      }
+      return;
+    }
+
     switch (step) {
       case 0:
         yield* this.toolUseTurn("fetchBaselineRules", {}, "mock-tool-rules");
@@ -83,30 +97,48 @@ export class MockModel extends Model<BaseModelConfig> {
         );
         break;
       case 2:
-        // Only recommend an ERP delay for a physical compulsion / gray-area
-        // urge. Pure rumination gets grounded without the pause — so different
-        // urges produce visibly different flows.
-        if (this.needsErpDelay(trigger)) {
+        if (kind === "hitl") {
+          // Gray-area compulsion that persists despite the anchor → ERP pause
+          // (4 nodes). The human sits with the urge.
           yield* this.toolUseTurn(
             "requestErpDelay",
             { trigger, urgeIntensity: 7 },
             "mock-tool-erp"
           );
         } else {
-          yield* this.finalTurn();
+          // Auto: an anchor decisively covers the situation → resolve directly,
+          // no pause (3 nodes).
+          yield* this.finalTurn("auto");
         }
         break;
       default:
-        yield* this.finalTurn();
+        yield* this.finalTurn("hitl");
         break;
     }
   }
 
-  /** Heuristic: does this urge involve a physical compulsion worth delaying? */
-  private needsErpDelay(trigger: string): boolean {
-    return /\b(check|again|re-?check|wash|clean|lock|stove|oven|door|unplug|count|repeat|touch|scrub|hands|redo|verify|make sure)\w*/i.test(
-      trigger
-    );
+  /**
+   * Route the urge to one of three flows:
+   *  - "genuine": real new sensory evidence of danger → act (2 nodes).
+   *  - "hitl": gray-area compulsion with catastrophic doubt → ERP pause (4).
+   *  - "auto": an anchor decisively covers it → resolve directly (3).
+   */
+  private classify(trigger: string): "genuine" | "hitl" | "auto" {
+    if (
+      /\b(smell|smoke|fire|burning|gas|flames?|bleeding|blood|injur|hurt|actually on|really is|new evidence)\w*/i.test(
+        trigger
+      )
+    ) {
+      return "genuine";
+    }
+    if (
+      /\b(what if|burns? down|flood|catastroph|die|harm|lock|stove|oven|unplug|make sure|turn(ed)? off)\w*|check\b[^.?!]*\bagain/i.test(
+        trigger
+      )
+    ) {
+      return "hitl";
+    }
+    return "auto";
   }
 
   private async *toolUseTurn(
@@ -127,12 +159,19 @@ export class MockModel extends Model<BaseModelConfig> {
     yield { type: "modelMessageStopEvent", stopReason: "toolUse" };
   }
 
-  private async *finalTurn(): AsyncGenerator<ModelStreamEvent> {
+  private async *finalTurn(
+    kind: "hitl" | "auto" | "genuine" = "hitl"
+  ): AsyncGenerator<ModelStreamEvent> {
     const text =
-      "Here's the reality: against your own anchors, nothing objective has changed — " +
-      "this is a known OCD loop, not new evidence. The urge is a feeling, not a fact. " +
-      "Acknowledge the thought, start a 5-minute ERP delay, and let the anxiety crest and fall " +
-      "without acting on the compulsion. You've already done enough.";
+      kind === "genuine"
+        ? "This one is different — a gas smell is new, real evidence, not a repeated doubt, so it's not the OCD loop. " +
+          "Act on it now: if it's safe, turn off the stove, open windows, and leave; then call your gas company or emergency services. " +
+          "Take care of the real risk first. Once you're safe, we can look at whether anxiety is adding to it."
+        : kind === "auto"
+        ? "Your anchor settles this directly: you wash when your hands are actually dirty, not when they just feel dirty — and you said they look clean. " +
+          "So there's nothing to wash here. This is the feeling of contamination, not real dirt; you can let it pass without acting."
+        : "You held the delay — notice the urge is already easing. Against your own anchor, checking once is enough and nothing has changed. " +
+          "This was the loop, not new evidence. Acknowledge the thought and let it go without checking again.";
 
     yield { type: "modelMessageStartEvent", role: "assistant" };
     yield { type: "modelContentBlockStartEvent" };
