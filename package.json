@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@strands-agents/sdk": "^1.17.0",
     "@xyflow/react": "^12.11.6",
     "mermaid": "^12.0.0",

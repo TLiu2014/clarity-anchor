@@ -1,5 +1,7 @@
 # ClarityAnchor 🪝
 
+🎥 **[Demo video](https://youtu.be/R7gNbTCXNYY)** &nbsp;·&nbsp; 🌐 **[Live site](http://52.26.253.109/)** &nbsp;·&nbsp; ✍️ **[Blog post](https://builder.aws.com/content/3JKwXeeHHhJUzWISOdq3lDojGzj/building-clarityanchor-for-agents-for-humans-an-ai-reality-anchor-that-knows-when-not-to-act)**
+
 An AI-powered **"Reality Anchor"** for OCD and anxiety, built on **AWS Strands
 Agents**. Describe an intrusive urge and a Strands agent grounds it against your
 own "Calm Ground Rules", names the cognitive distortion at play, and guides an
@@ -8,8 +10,6 @@ chain-of-thought live on a React Flow "Diagnostic Map".
 
 Built for the [Agents for Humans](https://agentsforhumans.devpost.com/)
 hackathon (Everyday Agents track).
-
-🎥 **[Watch the demo video](https://youtu.be/R7gNbTCXNYY)**
 
 - **Model-driven agent** — AWS Strands Agents (`@strands-agents/sdk`) with three
   tools: `fetchBaselineRules`, `analyzeDistortion`, `requestErpDelay`.
@@ -25,7 +25,11 @@ hackathon (Everyday Agents track).
 
 ## Getting started
 
-Requires **Node.js 22+** and **pnpm**.
+**Try it live:** [http://52.26.253.109/](http://52.26.253.109/) — no install needed.
+The hosted site is already configured with **Amazon Bedrock**; you can also bring
+your own key in the app (gear → paste a Bedrock API key).
+
+To run it locally, requires **Node.js 22+** and **pnpm**.
 
 ```bash
 pnpm install
@@ -35,39 +39,38 @@ pnpm dev
 # http://localhost:3000/docs   docs + architecture diagram
 ```
 
-That's it — **no API key or configuration is required.** Out of the box the app
-runs on a credential-free scripted model (`MockModel`) that exercises the full
-Strands agent loop (tool selection → execution → ERP pause → answer). This is the
-recommended mode for the demo because it's deterministic. Click a suggestion card
-on the left to see it in action.
+### Running with a real LLM (AWS Bedrock) — recommended
 
-### Running with a real LLM (AWS Bedrock)
+Strands Agents' default provider is **Amazon Bedrock** (Anthropic Claude), and this
+is the recommended way to run the app for real responses. First, **enable model
+access** in the AWS Bedrock console for `Claude Sonnet` in your region — see
+[Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
+(Strands defaults to model id `global.anthropic.claude-sonnet-4-6`.)
 
-Strands Agents' default provider is **Amazon Bedrock** (Anthropic Claude). To
-drive the agent with a real model:
+Then provide credentials **either** way:
 
-1. **Enable model access** in the AWS Bedrock console for
-   `Claude Sonnet` in your region — see
-   [Bedrock model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html).
-   (Strands defaults to model id `global.anthropic.claude-sonnet-4-6`.)
-
-2. **Provide AWS credentials** in `.env.local` (or `.env`) — any one of:
+**A — `.env.local` (or `.env`)**, any one of:
    - IAM keys: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
      (plus `AWS_SESSION_TOKEN` if temporary), **or**
    - a Bedrock API key: `AWS_BEARER_TOKEN_BEDROCK`, **or**
    - `aws configure` / `aws sso login` (your local AWS profile).
 
-   When AWS credentials are present the app **auto-detects** them and drives the
-   agent with Bedrock — no other setting required. Optional overrides:
-   `AWS_REGION` (default `us-west-2`), `BEDROCK_MODEL_ID`
-   (default `global.anthropic.claude-sonnet-4-6`), `DEMO_LATENCY_MS=0`, or
-   `MODEL_PROVIDER=mock` to force the offline heuristic even with keys present.
+   The app **auto-detects** these on start — no other setting required. **Restart**
+   `pnpm dev` after editing env; the nav-bar pill turns green **"Bedrock
+   connected."** Optional overrides: `AWS_REGION` (default `us-west-2`),
+   `BEDROCK_MODEL_ID` (default `global.anthropic.claude-sonnet-4-6`),
+   `DEMO_LATENCY_MS=0`.
 
-3. **Restart** the dev server (`pnpm dev`) so it picks up the env, then run an
-   analysis. The nav-bar pill turns green **"Bedrock connected."**
-
-Prefer not to touch env files? Click the **gear → paste a Bedrock API key** (BYOK).
+**B — in-app BYOK (no env files)**: click the **gear → paste a Bedrock API key**.
 It's stored only in your browser and takes effect immediately, no restart.
+
+### Offline heuristic model (no credentials)
+
+Without any credentials, the app falls back to a scripted, credential-free model
+(`MockModel`) that still exercises the full Strands agent loop (tool selection →
+execution → ERP pause → answer). It's deterministic — useful for a quick look or an
+offline demo — but its grounding answers are canned, so use Bedrock above for real
+responses. (Set `MODEL_PROVIDER=mock` to force it even when credentials are present.)
 
 ---
 
@@ -115,61 +118,31 @@ to the browser over SSE and drawn on the map as it happens.
   `globalThis` registry (`src/lib/strands/erpRegistry.ts`); `/api/agent/resume`
   resolves it. This blocks the whole agent loop without any snapshotting.
 
-## Deploying the agent to Amazon Bedrock AgentCore
+## Tech stack
 
-The same Strands agent is also packaged for **Amazon Bedrock AgentCore Runtime**
-(serverless, session-isolated agent hosting) in [`agentcore/`](agentcore/) — a
-standalone Express service exposing the AgentCore contract (`GET /ping`,
-`POST /invocations`). Build the arm64 image, push to ECR, and create the runtime
-with the included scripts:
+- **Agent framework** — AWS Strands Agents SDK (`@strands-agents/sdk`)
+- **Model** — Amazon Bedrock (Anthropic Claude), with a credential-free heuristic fallback
+- **Frontend** — Next.js (App Router), React 19, TypeScript
+- **Diagnostic map** — React Flow (`@xyflow/react`)
+- **State** — Zustand
+- **Styling** — Tailwind CSS, next-themes
+- **Streaming** — Server-Sent Events (SSE)
+- **Deploy** — Docker → Amazon ECR → EC2 (nginx); the agent is also packaged for
+  Amazon Bedrock AgentCore Runtime — see [`deploy/README.md`](deploy/README.md)
 
-```bash
-cd agentcore
-./create-iam-role.sh          # one-time: execution role → prints ROLE_ARN
-export ROLE_ARN=...
-./deploy.sh                   # ECR build/push + create-agent-runtime
-```
+## Hackathon
 
-The Next.js app keeps its in-process agent for live SSE streaming and the
-interactive ERP pause; the AgentCore deployment is the request/response
-counterpart. See [`agentcore/README.md`](agentcore/README.md) for details.
-
-## Project structure
-
-```
-src/
-  app/
-    api/agent/route.ts          SSE stream of the agent's chain-of-thought
-    api/agent/resume/route.ts   resume a paused ERP delay
-    page.tsx                    3-pane layout (chat | map | tabs)
-  components/
-    panels/ChatPanel.tsx        left: chat + live trace + suggestion cards
-    panels/RightPanel.tsx       right: tabbed Ground Rules / Node Details
-    flow/                       ThoughtNode + DiagnosticMap
-    ErpDelayPanel.tsx           3-minute ERP countdown + commit
-  lib/strands/
-    agent.ts                    Strands Agent + 3 tools + resolveModel()
-    mockModel.ts                credential-free scripted model
-    erpRegistry.ts              ERP pause/resume coordination
-  samples/data/*.json           demo scenarios (auto-loaded as suggestion cards)
-  store/useGraphStore.ts        Zustand: graph, SSE consumer, ERP, settings
-agentcore/                      the agent packaged for Bedrock AgentCore Runtime
-  src/server.ts                 Express /ping + /invocations (AgentCore contract)
-  src/agent.ts                  Strands agent + 3 tools (request/response variant)
-  Dockerfile · deploy.sh · iam/ arm64 image + ECR + create-agent-runtime
-```
-
-### Adding a demo sample
-
-Drop a new JSON file in `src/samples/data/` — it's picked up automatically as a
-suggestion card (no code change):
-
-```json
-{
-  "id": "my-scenario",
-  "emoji": "🌀",
-  "title": "Short title",
-  "prompt": "The urge the user types…",
-  "baselineRules": ["optional rules to seed if the user has none"]
-}
-```
+- Built for [Agents for Humans Hackathon](https://agentsforhumans.devpost.com/)
+- **Track** — Everyday Agents
+- **Eligibility**
+  - Built on the **AWS Strands Agents** SDK — a model-driven agent with three tools
+    (`fetchBaselineRules`, `analyzeDistortion`, `requestErpDelay`)
+  - Runs on **Amazon Bedrock** (Anthropic Claude)
+  - A genuine **human-in-the-loop** agent — the ERP pause suspends the agent loop
+    until the user commits, then resumes it
+  - Also packaged for **Amazon Bedrock AgentCore Runtime** ([`agentcore/`](agentcore/))
+  - **Deployed on AWS** — Docker image on EC2, pulled from ECR, Bedrock reached via
+    an IAM instance role
+- **Links** — [Demo video](https://youtu.be/R7gNbTCXNYY) ·
+  [Live site](http://52.26.253.109/) ·
+  [Blog post](https://builder.aws.com/content/3JKwXeeHHhJUzWISOdq3lDojGzj/building-clarityanchor-for-agents-for-humans-an-ai-reality-anchor-that-knows-when-not-to-act)

@@ -62,9 +62,12 @@ for an IAM user (needs an AWS account first):
 ./deploy/build-and-push.sh
 # Graviton (t4g) instead:
 PLATFORM=linux/arm64 ./deploy/build-and-push.sh
+# If your deploy keys are in a named profile:
+AWS_PROFILE=<your-deploy-profile> ./deploy/build-and-push.sh
 ```
-This builds `.next` standalone into a Docker image and pushes it to
-`clarityanchor-web:latest` in ECR.
+The script runs `pnpm build` **on your machine** to produce the Next standalone
+output, then the Docker image only *packages* it (no `pnpm install`/build inside
+the container). The image is pushed to `clarityanchor-web:latest` in ECR.
 
 ## 2. Run it on the EC2 host
 SSH in, install Docker, then pull & run (creds come from the instance role):
@@ -97,8 +100,66 @@ The config disables proxy buffering and sets a long read timeout so the held-ope
 Re-run `./deploy/build-and-push.sh`, then on the host:
 `sudo docker pull $IMAGE && sudo docker rm -f clarityanchor && <docker run … again>`.
 
-## Notes
-- If the container errors at runtime with a missing module from the Strands SDK,
-  widen `outputFileTracingIncludes` in `next.config.mjs` (it already includes
-  `@strands-agents`, `@aws-sdk`, `@smithy`).
-- The agent is also deployable to Bedrock AgentCore Runtime — see `../agentcore/`.
+## Deployment gotchas (why the build is set up this way)
+
+If you touch the Dockerfile, `next.config.mjs`, or `build-and-push.sh`, read this
+first.
+
+Note the app is built **on the host** (`pnpm build`) and the `Dockerfile` is
+**runtime-only** — it just packages the prebuilt `.next/standalone` and runs
+`node server.js`; no `pnpm install`/build happens in the container.
+
+### The externalized Strands SDK's runtime deps are missing from `standalone`
+
+Symptom: pages load fine, but hitting `/api/agent` (running an analysis) 500s with
+`ERR_MODULE_NOT_FOUND`, in a chain — `@modelcontextprotocol/sdk` →
+`@aws-sdk/client-bedrock-runtime` → `@opentelemetry/api` → `cross-spawn` → …
+
+Cause: `@strands-agents/sdk` is in `serverExternalPackages` (so Next doesn't bundle
+it), and it **eagerly imports many integrations it declares as `peerDependencies`**
+(MCP, the Bedrock client, OpenTelemetry, etc.). Because it's externalized, Next's
+file tracer can't follow those imports, so they never land in `.next/standalone`.
+Locally it works only because pnpm has those packages in the store. Note the app
+**does not use MCP** at all — Strands just imports it unconditionally, which is why
+`@modelcontextprotocol/sdk` shows up first. (`@modelcontextprotocol/sdk` isn't even
+declared by Strands, so it must be installed explicitly: `pnpm add @modelcontextprotocol/sdk`.)
+
+**Fix:** `deploy/copy-mcp-deps.mjs` runs after `pnpm build` and injects the Strands
+runtime **dependency closure** into `.next/standalone/node_modules`. It BFS-resolves
+packages from the real (pnpm) `node_modules` starting at Strands — following
+`dependencies` + `optionalDependencies` + `peerDependencies`, and skipping peers
+that aren't installed (those aren't on any loadable path anyway). This keeps the
+image lean (~127 MB vs ~576 MB for a full prod `node_modules`, which is mostly
+unused `@aws-sdk`).
+
+Two subtleties the script handles:
+- **Trace globs don't reach pnpm transitives.** `outputFileTracingIncludes` globs
+  like `./node_modules/@aws-sdk/**` only match *top-level* packages; Strands'
+  transitive deps live under `.pnpm/…` and aren't matched. Tracing the whole
+  `node_modules` instead overflows the tracer on pnpm's symlink graph
+  (`Maximum call stack size exceeded`). Hence the explicit closure copy.
+- **Walk up to the package *root*.** A package's `./package.json` export can resolve
+  to a nested `dist/cjs/package.json` type-marker (`{"type":"commonjs"}`) that has
+  no `dependencies` — reading that silently drops the whole subtree. The script
+  walks up to the manifest whose `name` matches before reading deps.
+
+If you add a Strands feature that pulls in a new integration, install that package
+and it'll be picked up automatically (it's declared as a Strands peer dep).
+
+## Alternative: deploy the agent to Amazon Bedrock AgentCore Runtime
+
+The same Strands agent is also packaged for **Amazon Bedrock AgentCore Runtime**
+(serverless, session-isolated agent hosting) in [`../agentcore/`](../agentcore/) —
+a standalone Express service exposing the AgentCore contract (`GET /ping`,
+`POST /invocations`). Build the arm64 image, push to ECR, and create the runtime:
+
+```bash
+cd agentcore
+./create-iam-role.sh          # one-time: execution role → prints ROLE_ARN
+export ROLE_ARN=...
+./deploy.sh                   # ECR build/push + create-agent-runtime
+```
+
+The Next.js app keeps its in-process agent for live SSE streaming and the
+interactive ERP pause; the AgentCore deployment is the request/response
+counterpart. See [`../agentcore/README.md`](../agentcore/README.md) for details.

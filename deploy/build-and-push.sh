@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Build the ClarityAnchor web image locally and push it to ECR.
 # No AWS build service is used — your machine builds the image; EC2 just runs it.
-# Prereqs: AWS CLI v2 (logged in), Docker with buildx.
+# The Next app is built on the HOST (pnpm build) and the image only packages the
+# standalone output (no `pnpm install`/build runs inside the container).
+# Prereqs: AWS CLI v2 (logged in), Docker with buildx, pnpm.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."   # repo root (build context)
+
+echo "==> Building Next standalone on the host (pnpm build)"
+pnpm build
+
+echo "==> Injecting externalized Strands runtime closure into standalone"
+node deploy/copy-mcp-deps.mjs
 
 REGION="${AWS_REGION:-us-west-2}"
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
