@@ -8,6 +8,7 @@ import {
 } from "@/lib/strands/agent";
 import { waitForErpCommit } from "@/lib/strands/erpRegistry";
 import { getHistory, saveHistory } from "@/lib/strands/conversationStore";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { Model } from "@strands-agents/sdk";
 
 // The Strands SDK is Node-only (pulls in AWS SDK, etc.). Force the Node runtime.
@@ -70,6 +71,17 @@ export async function POST(req: Request) {
     usingRealModel = true;
   }
 
+  // Rate limit to cap Bedrock cost on the public demo. Per-IP for everyone; the
+  // global daily cap only counts requests that spend OUR credentials (BYOK
+  // requests use the visitor's own key).
+  const xff = req.headers.get("x-forwarded-for");
+  const clientIp =
+    (xff ? xff.split(",")[0]!.trim() : "") ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
+  const usesOurBedrock = !hasBedrockCreds(bedrock) && envBedrockConfigured();
+  const rate = checkRateLimit({ ip: clientIp, countGlobal: usesOurBedrock });
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -79,6 +91,19 @@ export async function POST(req: Request) {
 
       try {
         send({ type: "start", prompt, runId });
+
+        // Over the demo rate limit → stop before any Bedrock call.
+        if (!rate.ok) {
+          send({
+            type: "error",
+            code: "rate_limited",
+            error:
+              rate.reason === "global"
+                ? "This shared demo has hit its usage cap for now. Please try again later, or add your own Bedrock API key in Settings to keep going."
+                : `You're going a bit fast — the demo allows a few analyses per minute. Please wait ~${rate.retryAfterSec}s and try again.`,
+          });
+          return;
+        }
 
         // No real model available → alert or heuristic fallback.
         if (!model) {

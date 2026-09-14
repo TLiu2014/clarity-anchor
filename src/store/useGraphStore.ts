@@ -654,9 +654,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           break;
         }
         case "error": {
-          if (event.code === "not_connected") {
+          if (event.code === "not_connected" || event.code === "rate_limited") {
             // No flow — roll back the nodes/edges but KEEP the user's message
-            // so the "not connected" alert renders alongside what they asked.
+            // so the alert (not-connected / rate-limited) renders alongside it.
             set({
               nodes: prev.nodes,
               edges: prev.edges,

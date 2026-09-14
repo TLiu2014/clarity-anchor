@@ -117,7 +117,7 @@ especially in a mental-health context, where a black box is worse than no tool.
 ## Try it
 
 - **Live demo video:** https://youtu.be/R7gNbTCXNYY
-- **Repo:** (add your public repo link)
+- **Repo:** https://github.com/TLiu2014/clarity-anchor
 
 ClarityAnchor is not a replacement for professional care — but it can be the
 objective second voice in the room when the loop hits. That felt like the right
