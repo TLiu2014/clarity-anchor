@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const GITHUB_URL = "https://github.com/TLiu2014/clarity-anchor";
+export const DEMO_VIDEO_URL = "https://youtu.be/R7gNbTCXNYY";
 
 export function BrandMark() {
   return (

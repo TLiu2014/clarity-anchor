@@ -1,6 +1,18 @@
 import Link from "next/link";
-import { SiteNav, SiteFooter } from "./SiteChrome";
+import { SiteNav, SiteFooter, DEMO_VIDEO_URL } from "./SiteChrome";
 import { ArchitectureDiagram } from "./ArchitectureDiagram";
+import { FullArchitectureDiagram } from "./FullArchitectureDiagram";
+import { DocsToc, type TocItem } from "./DocsToc";
+
+const SECTIONS: TocItem[] = [
+  { id: "overview", label: "Overview" },
+  { id: "architecture", label: "Architecture" },
+  { id: "agent", label: "The agent & its tools" },
+  { id: "erp", label: "The ERP pause" },
+  { id: "anchors", label: "Your anchors" },
+  { id: "running", label: "Running it" },
+  { id: "stack", label: "Stack" },
+];
 
 function H2({ id, children }: { id: string; children: React.ReactNode }) {
   return (
@@ -28,7 +40,14 @@ export function Docs() {
     <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <SiteNav active="docs" />
 
-      <main className="mx-auto max-w-3xl space-y-12 px-6 py-12">
+      <div className="mx-auto flex max-w-6xl gap-10 px-6 py-12">
+        <aside className="hidden w-56 shrink-0 lg:block">
+          <div className="sticky top-24">
+            <DocsToc items={SECTIONS} />
+          </div>
+        </aside>
+
+        <main className="min-w-0 max-w-3xl flex-1 space-y-12">
         <header>
           <h1 className="text-3xl font-bold tracking-tight">Documentation</h1>
           <p className="mt-2 text-slate-600 dark:text-slate-300">
@@ -62,6 +81,16 @@ export function Docs() {
           <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-6 dark:border-slate-800 dark:bg-slate-900/40">
             <ArchitectureDiagram />
           </div>
+          <p className="text-slate-600 dark:text-slate-300">
+            The same Strands agent is also packaged for{" "}
+            <span className="font-medium text-slate-800 dark:text-slate-100">
+              Amazon Bedrock AgentCore Runtime
+            </span>{" "}
+            (serverless, session-isolated agent hosting) as a standalone{" "}
+            <code>/ping</code> + <code>/invocations</code> service — the
+            request/response counterpart to the streaming web app.
+          </p>
+          <FullArchitectureDiagram />
         </section>
 
         <section className="space-y-3">
@@ -155,6 +184,17 @@ export function Docs() {
               <path d="M5 12h14M13 6l6 6-6 6" />
             </svg>
           </Link>
+          <a
+            href={DEMO_VIDEO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Watch the demo
+          </a>
           <Link
             href="/"
             className="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
@@ -162,7 +202,8 @@ export function Docs() {
             Back to home
           </Link>
         </div>
-      </main>
+        </main>
+      </div>
 
       <SiteFooter />
     </div>

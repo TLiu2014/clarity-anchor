@@ -9,6 +9,8 @@ chain-of-thought live on a React Flow "Diagnostic Map".
 Built for the [Agents for Humans](https://agentsforhumans.devpost.com/)
 hackathon (Everyday Agents track).
 
+🎥 **[Watch the demo video](https://youtu.be/R7gNbTCXNYY)**
+
 - **Model-driven agent** — AWS Strands Agents (`@strands-agents/sdk`) with three
   tools: `fetchBaselineRules`, `analyzeDistortion`, `requestErpDelay`.
 - **Live diagnostic map** — the agent streams its tool calls over SSE; each is
@@ -71,6 +73,8 @@ It's stored only in your browser and takes effect immediately, no restart.
 
 ## Architecture
 
+<!-- Diagram source: docs/architecture.mmd (keep this block in sync with it). -->
+
 ```mermaid
 flowchart TD
     subgraph Browser["Browser · Next.js"]
@@ -86,6 +90,7 @@ flowchart TD
     end
 
     Model["Amazon Bedrock — Claude<br/>(or built-in heuristic model)"]
+    AgentCore["Amazon Bedrock AgentCore Runtime<br/>(same agent, packaged · /ping + /invocations)"]
 
     UI -- "POST urge + anchors" --> Route
     Anchors -. "sent with request" .-> Route
@@ -96,6 +101,8 @@ flowchart TD
     Tools -. "requestErpDelay pauses the loop" .-> UI
     UI -- "user confirms" --> Resume
     Resume -. "resume the paused loop" .-> Agent
+    Agent -. "also deployable to" .-> AgentCore
+    AgentCore -- "invoke" --> Model
 ```
 
 The agent framework is **AWS Strands Agents**; the model is **Amazon Bedrock**
@@ -107,6 +114,25 @@ to the browser over SSE and drawn on the map as it happens.
 - **ERP pause**: the `requestErpDelay` tool `await`s a per-run promise held in a
   `globalThis` registry (`src/lib/strands/erpRegistry.ts`); `/api/agent/resume`
   resolves it. This blocks the whole agent loop without any snapshotting.
+
+## Deploying the agent to Amazon Bedrock AgentCore
+
+The same Strands agent is also packaged for **Amazon Bedrock AgentCore Runtime**
+(serverless, session-isolated agent hosting) in [`agentcore/`](agentcore/) — a
+standalone Express service exposing the AgentCore contract (`GET /ping`,
+`POST /invocations`). Build the arm64 image, push to ECR, and create the runtime
+with the included scripts:
+
+```bash
+cd agentcore
+./create-iam-role.sh          # one-time: execution role → prints ROLE_ARN
+export ROLE_ARN=...
+./deploy.sh                   # ECR build/push + create-agent-runtime
+```
+
+The Next.js app keeps its in-process agent for live SSE streaming and the
+interactive ERP pause; the AgentCore deployment is the request/response
+counterpart. See [`agentcore/README.md`](agentcore/README.md) for details.
 
 ## Project structure
 
@@ -127,6 +153,10 @@ src/
     erpRegistry.ts              ERP pause/resume coordination
   samples/data/*.json           demo scenarios (auto-loaded as suggestion cards)
   store/useGraphStore.ts        Zustand: graph, SSE consumer, ERP, settings
+agentcore/                      the agent packaged for Bedrock AgentCore Runtime
+  src/server.ts                 Express /ping + /invocations (AgentCore contract)
+  src/agent.ts                  Strands agent + 3 tools (request/response variant)
+  Dockerfile · deploy.sh · iam/ arm64 image + ECR + create-agent-runtime
 ```
 
 ### Adding a demo sample

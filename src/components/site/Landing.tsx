@@ -1,5 +1,6 @@
+import { Fragment } from "react";
 import Link from "next/link";
-import { SiteNav, SiteFooter } from "./SiteChrome";
+import { SiteNav, SiteFooter, DEMO_VIDEO_URL } from "./SiteChrome";
 import { ArchitectureDiagram } from "./ArchitectureDiagram";
 
 function Icon({ path }: { path: string }) {
@@ -83,6 +84,17 @@ export function Landing() {
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </Link>
+            <a
+              href={DEMO_VIDEO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Watch the demo
+            </a>
             <Link
               href="/docs"
               className="rounded-lg border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
@@ -118,10 +130,10 @@ export function Landing() {
         <h2 className="text-center text-2xl font-bold tracking-tight">
           How it works
         </h2>
-        <div className="mt-8 flex flex-col items-stretch gap-3 md:flex-row md:items-center md:justify-center">
+        <div className="mt-8 flex flex-col items-stretch gap-3 md:flex-row md:items-stretch md:justify-center">
           {STEPS.map((s, i) => (
-            <div key={s.n} className="flex items-center gap-3 md:flex-col md:gap-2">
-              <div className="flex min-w-[9.5rem] flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:flex-col md:text-center">
+            <Fragment key={s.n}>
+              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 md:min-w-[9.5rem] md:flex-1 md:flex-col md:justify-center md:text-center">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
                   {s.n}
                 </span>
@@ -130,11 +142,13 @@ export function Landing() {
                 </span>
               </div>
               {i < STEPS.length - 1 && (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0 rotate-90 text-slate-300 md:rotate-0">
-                  <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
+                <div className="flex shrink-0 items-center justify-center text-slate-300">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 rotate-90 md:rotate-0">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </div>
               )}
-            </div>
+            </Fragment>
           ))}
         </div>
       </section>
